@@ -3,4 +3,4 @@
 boards = ["feather_m4", "metro_m4"]
 
 [examples.async_dmac]
-boards = ["metro_m4"]
+boards = ["metro_m4", "grand_central_m4"]
