@@ -2,10 +2,13 @@
 
 use atsamd_hal_macros::hal_cfg;
 
-use crate::clock;
+use crate::clock::v2::{
+    self as clock,
+    apb::ApbClk,
+    pclk::{Pclk, PclkSourceId},
+};
 use crate::gpio::*;
 use crate::gpio::{AlternateE, AnyPin, Pin};
-use crate::pac::Mclk;
 use crate::time::Hertz;
 use crate::timer_params::TimerParams;
 
@@ -130,7 +133,7 @@ impl_tc_pinout!(TC7Pinout: [
 ]);
 
 macro_rules! pwm {
-    ($($TYPE:ident: ($TC:ident, $pinout:ident, $clock:ident, $apmask:ident, $apbits:ident, $wrapper:ident)),+) => {
+    ($($TYPE:ident: ($TC:ident, $pinout:ident, $PclkId:ident, $wrapper:ident)),+) => {
         $(
 
 pub struct $TYPE<I: PinId> {
@@ -144,15 +147,15 @@ pub struct $TYPE<I: PinId> {
 
 impl<I: PinId> $TYPE<I> {
     pub fn new(
-        clock: &clock::$clock,
+        _apb_clock: ApbClk<clock::types::$TC>,
+        pclk: Pclk<clock::types::$PclkId, impl PclkSourceId>,
         freq: Hertz,
         tc: crate::pac::$TC,
         pinout: $pinout<I>,
-        mclk: &mut Mclk,
     ) -> Self {
         let count = tc.count16();
-        let params = TimerParams::new(freq.convert(), clock.freq());
-        mclk.$apmask().modify(|_, w| w.$apbits().set_bit());
+        let params = TimerParams::new(freq.convert(), pclk.freq());
+
         count.ctrla().write(|w| w.swrst().set_bit());
         while count.ctrla().read().bits() & 1 != 0 {}
         count.ctrla().modify(|_, w| w.enable().clear_bit());
@@ -179,7 +182,7 @@ impl<I: PinId> $TYPE<I> {
         while count.syncbusy().read().enable().bit_is_set() {}
 
         Self {
-            clock_freq: clock.freq(),
+            clock_freq: pclk.freq(),
             tc,
             pinout,
         }
@@ -275,21 +278,21 @@ impl<I: PinId> $crate::ehal_02::PwmPin for $TYPE<I> {
 )+}}
 
 #[hal_cfg("tc0")]
-pwm! { Pwm0: (Tc0, TC0Pinout, Tc0Tc1Clock, apbamask, tc0_, Pwm0Wrapper) }
+pwm! { Pwm0: (Tc0, TC0Pinout, Tc0Tc1, Pwm0Wrapper) }
 #[hal_cfg("tc1")]
-pwm! { Pwm1: (Tc1, TC1Pinout, Tc0Tc1Clock, apbamask, tc1_, Pwm1Wrapper) }
+pwm! { Pwm1: (Tc1, TC1Pinout, Tc0Tc1, Pwm1Wrapper) }
 #[hal_cfg("tc2")]
-pwm! { Pwm2: (Tc2, TC2Pinout, Tc2Tc3Clock, apbbmask, tc2_, Pwm2Wrapper) }
+pwm! { Pwm2: (Tc2, TC2Pinout, Tc2Tc3, Pwm2Wrapper) }
 #[hal_cfg("tc3")]
-pwm! { Pwm3: (Tc3, TC3Pinout, Tc2Tc3Clock, apbbmask, tc3_, Pwm3Wrapper) }
+pwm! { Pwm3: (Tc3, TC3Pinout, Tc2Tc3, Pwm3Wrapper) }
 #[hal_cfg("tc4")]
-pwm! { Pwm4: (Tc4, TC4Pinout, Tc4Tc5Clock, apbcmask, tc4_, Pwm4Wrapper) }
+pwm! { Pwm4: (Tc4, TC4Pinout, Tc4Tc5, Pwm4Wrapper) }
 #[hal_cfg("tc5")]
-pwm! { Pwm5: (Tc5, TC5Pinout, Tc4Tc5Clock, apbcmask, tc5_, Pwm5Wrapper) }
+pwm! { Pwm5: (Tc5, TC5Pinout, Tc4Tc5, Pwm5Wrapper) }
 #[hal_cfg("tc6")]
-pwm! { Pwm6: (Tc6, TC6Pinout, Tc6Tc7Clock, apbdmask, tc6_, Pwm6Wrapper) }
+pwm! { Pwm6: (Tc6, TC6Pinout, Tc6Tc7, Pwm6Wrapper) }
 #[hal_cfg("tc7")]
-pwm! { Pwm7: (Tc7, TC7Pinout, Tc6Tc7Clock, apbdmask, tc7_, Pwm7Wrapper) }
+pwm! { Pwm7: (Tc7, TC7Pinout, Tc6Tc7, Pwm7Wrapper) }
 
 // Timer/Counter for Control Applications (TCCx)
 
@@ -552,7 +555,7 @@ impl_tcc_pinout!(TCC4Pinout: [
 ]);
 
 macro_rules! pwm_tcc {
-    ($($TYPE:ident: ($TCC:ident, $pinout:ident, $clock:ident, $apmask:ident, $apbits:ident, $wrapper:ident)),+) => {
+    ($($TYPE:ident: ($TCC:ident, $pinout:ident, $PclkId:ident, $wrapper:ident)),+) => {
         $(
 
 pub struct $TYPE<I: PinId, M: PinMode> {
@@ -566,14 +569,14 @@ pub struct $TYPE<I: PinId, M: PinMode> {
 
 impl<I: PinId, M: PinMode> $TYPE<I, M> {
     pub fn new(
-        clock: &clock::$clock,
+        _apb_clock: ApbClk<clock::types::$TCC>,
+        pclk: Pclk<clock::types::$PclkId, impl PclkSourceId>,
         freq: Hertz,
         tcc: crate::pac::$TCC,
         pinout: $pinout<I, M>,
-        mclk: &mut Mclk,
     ) -> Self {
-        let params = TimerParams::new(freq.convert(), clock.freq());
-        mclk.$apmask().modify(|_, w| w.$apbits().set_bit());
+        let params = TimerParams::new(freq.convert(), pclk.freq());
+
         tcc.ctrla().write(|w| w.swrst().set_bit());
         while tcc.syncbusy().read().swrst().bit_is_set() {}
         tcc.ctrlbclr().write(|w| w.dir().set_bit() );
@@ -601,7 +604,7 @@ impl<I: PinId, M: PinMode> $TYPE<I, M> {
         while tcc.syncbusy().read().enable().bit_is_set() {}
 
         Self {
-            clock_freq: clock.freq(),
+            clock_freq: pclk.freq(),
             tcc,
             pinout,
         }
@@ -677,12 +680,12 @@ impl<I: PinId, M: PinMode> $crate::ehal_02::Pwm for $TYPE<I, M> {
 }
 
 #[hal_cfg("tcc0")]
-pwm_tcc! { Tcc0Pwm: (Tcc0, TCC0Pinout, Tcc0Tcc1Clock, apbbmask, tcc0_, TccPwm0Wrapper) }
+pwm_tcc! { Tcc0Pwm: (Tcc0, TCC0Pinout, Tcc0Tcc1, TccPwm0Wrapper) }
 #[hal_cfg("tcc1")]
-pwm_tcc! { Tcc1Pwm: (Tcc1, TCC1Pinout, Tcc0Tcc1Clock, apbbmask, tcc1_, TccPwm1Wrapper) }
+pwm_tcc! { Tcc1Pwm: (Tcc1, TCC1Pinout, Tcc0Tcc1, TccPwm1Wrapper) }
 #[hal_cfg("tcc2")]
-pwm_tcc! { Tcc2Pwm: (Tcc2, TCC2Pinout, Tcc2Tcc3Clock, apbcmask, tcc2_, TccPwm2Wrapper) }
+pwm_tcc! { Tcc2Pwm: (Tcc2, TCC2Pinout, Tcc2Tcc3, TccPwm2Wrapper) }
 #[hal_cfg("tcc3")]
-pwm_tcc! { Tcc3Pwm: (Tcc3, TCC3Pinout, Tcc2Tcc3Clock, apbcmask, tcc3_, TccPwm3Wrapper) }
+pwm_tcc! { Tcc3Pwm: (Tcc3, TCC3Pinout, Tcc2Tcc3, TccPwm3Wrapper) }
 #[hal_cfg("tcc4")]
-pwm_tcc! { Tcc4Pwm: (Tcc4, TCC4Pinout, Tcc4Clock,     apbdmask, tcc4_, TccPwm4Wrapper) }
+pwm_tcc! { Tcc4Pwm: (Tcc4, TCC4Pinout, Tcc4,     TccPwm4Wrapper) }
